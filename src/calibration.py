@@ -11,7 +11,7 @@ def fetch_adj_close(ticker: str, start: str, end=None) -> pd.Series:
     if df.empty:
         raise ValueError(f"No data fetched for {ticker}.")
 
-    adj = df["Adj Close"]
+    adj = df["Close"]
     if isinstance(adj, pd.DataFrame):
         if ticker in adj.columns:
             adj = adj[ticker]
@@ -25,4 +25,18 @@ def fetch_adj_close(ticker: str, start: str, end=None) -> pd.Series:
 
 
 def estimate_mu_sigma(prices: pd.Series, steps_per_year: int) -> tuple[float, float]:
-    pass
+    """
+    Estimate annualised drift (mu) and volatility (sigma) from a price series
+    using daily log returns.
+    """
+    log_returns = np.log(prices / prices.shift(1)).dropna()
+    mu = log_returns.mean() * steps_per_year
+    sigma = log_returns.std() * math.sqrt(steps_per_year)
+    return mu, sigma
+
+
+if __name__ == "__main__":
+    prices = fetch_adj_close("BTC-USD", start="2022-01-01")
+    mu, sigma = estimate_mu_sigma(prices, steps_per_year=365)
+    print("mu_annual:", mu)
+    print("sigma_annual:", sigma)
