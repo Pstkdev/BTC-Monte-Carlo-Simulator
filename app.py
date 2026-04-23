@@ -9,10 +9,10 @@ from src.btc_simulation import BTCMonteCarlo
 
 st.set_page_config(page_title="BTC Monte Carlo Simulator", layout="wide")
 st.title("Bitcoin Monte Carlo Simulator")
-st.caption("GBM Monte Carlo simulation for BTC-USD")
+st.caption("Geometric Brownian Motion (GBM) Monte Carlo simulation for BTC-USD")
 
 
-# ---- helpers ----
+# ------------ helpers ------------ #
 @st.cache_data(show_spinner=False)
 def fetch_btc_history_bounds():
     """
@@ -30,7 +30,21 @@ def max_available_years(first_date: pd.Timestamp, last_date: pd.Timestamp) -> in
     return max(1, int(days // 365.25))
 
 
-# ---- Sidebar ----
+@st.cache_data(show_spinner=False)
+def build_viz_long_df(paths: np.ndarray, idx: np.ndarray, years: int) -> pd.DataFrame:
+    """
+    Build a long DataFrame for Plotly from a subset of simulated paths.
+    Cached because this is expensive.
+    """
+    t_years = np.linspace(0, years, paths.shape[1])
+    df_paths = pd.DataFrame(paths[idx], columns=t_years)
+    df_paths["path_id"] = [f"path_{i}" for i in idx]
+    df_long = df_paths.melt(id_vars="path_id", var_name="t", value_name="price")
+    df_long["t"] = df_long["t"].astype(float)
+    return df_long
+
+
+# ------------ Sidebar ------------ #
 st.sidebar.header("Simulation parameters")
 
 first_date, last_date = fetch_btc_history_bounds()
@@ -83,7 +97,17 @@ threshold_price = st.sidebar.number_input(
 )
 
 
-# ---- Calibration ----
+# ---- Chart options ---- #
+st.sidebar.divider()
+st.sidebar.subheader("Chart options")
+log_y = st.sidebar.checkbox(
+    "Log scale (Y axis)",
+    value=False,
+    help="Better readability when some simulated paths explode. Log scale compresses extreme values.",
+)
+
+
+# ------------ BTC Data Calibration ------------ #
 @st.cache_data(show_spinner=False)
 def calibrate_btc(lookback_years: int, last_date: pd.Timestamp):
     start_date = last_date - pd.Timedelta(days=int(lookback_years * 365.25))
@@ -96,7 +120,8 @@ def calibrate_btc(lookback_years: int, last_date: pd.Timestamp):
 with st.spinner("Fetching BTC-USD and calibrating μ/σ..."):
     start_price, mu_cal, sigma_cal, prices_hist = calibrate_btc(int(lookback_years), last_date)
 
-# ---- Advanced (overrides + seed) ----
+
+# ------------ Advanced parameters ------------ #
 with st.sidebar.expander("Advanced parameters", expanded=False):
     st.caption("Calibration (annualised)")
     st.write(f"μ (drift): {mu_cal:.3f}")
@@ -120,22 +145,22 @@ with st.sidebar.expander("Advanced parameters", expanded=False):
         help="Same seed = same simulated paths.",
     )
 
-# Apply overrides AFTER the expander inputs exist
+# Apply overrides after the expander inputs exist
 mu = float(mu_override) if override_mu else float(mu_cal)
 sigma = float(sigma_override) if override_sigma else float(sigma_cal)
 
-# ---- Run simulation ----
-sim = BTCMonteCarlo(
-    start_price=float(start_price),
-    mu=float(mu),
-    sigma=float(sigma),
-    years=int(years),
-    num_simulations=int(num_simulations),
-    seed=int(seed),
-)
 
-paths = sim.simulate_paths()
-q = sim.compute_quantiles(paths, qs=(0.1, 0.5, 0.9))
+# ------------ RUN SIMULATION ------------ #
+@st.cache_data(show_spinner=False)
+def run_mc(start_price, mu, sigma, years, num_simulations, seed):
+    sim = BTCMonteCarlo(start_price, mu, sigma, years, num_simulations, seed)
+    paths = sim.simulate_paths()
+    q = sim.compute_quantiles(paths, qs=(0.1, 0.5, 0.9))
+    return paths, q
+
+
+with st.spinner("Running simulations..."):
+    paths, q = run_mc(float(start_price), float(mu), float(sigma), int(years), int(num_simulations), int(seed))
 
 # simple time axis in years
 num_steps = q.shape[1] - 1
@@ -144,42 +169,44 @@ t_years = np.linspace(0, years, num_steps + 1)
 df_q = pd.DataFrame({"t": t_years, "P10": q[0], "P50": q[1], "P90": q[2]})
 
 final_prices = paths[:, -1]
+# get percentiles and probability of ending above threshold
 p10_final = float(np.quantile(final_prices, 0.10))
 p50_final = float(np.quantile(final_prices, 0.50))
 p90_final = float(np.quantile(final_prices, 0.90))
 prob_over = float((final_prices > threshold_price).mean()) * 100.0
 
-# ---- Layout ----
+
+# ------------ Metrics ------------ #
+
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric("Start price (BTC-USD)", f"${start_price:,.0f}")
 col2.metric("Horizon", f"{years} year(s)")
 col3.metric("Simulations", f"{num_simulations:,}")
-col4.metric("Chance BTC ends above target", f"{prob_over:.1f}%")
+col4.metric(f"Chance BTC ends above ${threshold_price:,.0f}", f"{prob_over:.1f}%")
 
 col1.metric("Bear case", f"${p10_final:,.0f}")
 col2.metric("Base case", f"${p50_final:,.0f}")
 col3.metric("Bull case", f"${p90_final:,.0f}")
-col4.metric("σ used (annual)", f"{sigma:.3f}")
+col4.metric("Annual volatility (σ)", f"{sigma*100:.1f}%")
 
 st.divider()
 
-# ---- Charts ----
 
-# ---- Spaghetti plot settings ----
-st.subheader("Sample simulated paths")
-n_show = st.slider("Paths to display", min_value=20, max_value=300, value=80, step=10)
+# ------------ Charts ------------ #
 
+# Graph 1: Spaghetti plot settings
+st.subheader("Simulated price paths")
+n_show = st.slider("Number of paths to show", min_value=20, max_value=300, value=100, step=10)
+
+# random subset of paths for visualization
 rng_vis = np.random.default_rng(seed)
 idx = rng_vis.choice(paths.shape[0], size=min(n_show, paths.shape[0]), replace=False)
 
-t_years = np.linspace(0, years, paths.shape[1])  # paths already includes t=0 column
+# Build long dataframe
+df_long = build_viz_long_df(paths, idx, int(years))
 
-df_paths = pd.DataFrame(paths[idx], columns=t_years)
-df_paths["path_id"] = [f"path_{i}" for i in idx]  # keep identity
-
-df_long = df_paths.melt(id_vars="path_id", var_name="t", value_name="price")
-df_long["t"] = df_long["t"].astype(float)
+# ---- Graph 1 ----
 
 fig_paths = px.line(
     df_long,
@@ -187,63 +214,79 @@ fig_paths = px.line(
     y="price",
     line_group="path_id",
     color="path_id",
-    title=f"{len(idx)} simulated BTC paths",
 )
 fig_paths.update_traces(line=dict(width=1), opacity=0.70)
-fig_paths.update_layout(showlegend=True, xaxis_title="Years", yaxis_title="Price (USD)")
-
-# --- Overlay quantiles on top of spaghetti ---
-fig_paths.add_scatter(
-    x=df_q["t"],
-    y=df_q["P10"],
-    mode="lines",
-    name="P10",
-    line=dict(width=3),
-)
-fig_paths.add_scatter(
-    x=df_q["t"],
-    y=df_q["P50"],
-    mode="lines",
-    name="P50 (median)",
-    line=dict(width=4),
-)
-fig_paths.add_scatter(
-    x=df_q["t"],
-    y=df_q["P90"],
-    mode="lines",
-    name="P90",
-    line=dict(width=3),
-)
+fig_paths.update_layout(showlegend=True, xaxis_title="Years", yaxis_title="BTC Price (USD)")
+fig_paths.update_yaxes(type="log" if log_y else "linear")
 
 st.plotly_chart(fig_paths, width="stretch")
+st.caption(
+    "Note: number of paths shown is limited for readability. Use the slider to adjust. "
+    "You can hide a path by clicking its id in the legend."
+    " If paths explode, enable Log scale in the sidebar."
+)
 
-st.subheader("Charts")
-fig_fan = px.line(df_q, x="t", y=["P10", "P50", "P90"], title="BTC price quantiles over time")
-fig_fan.update_layout(xaxis_title="Years", yaxis_title="Price (USD)")
-st.plotly_chart(fig_fan, width="stretch")
+# ---- Graph 2 ----
+st.subheader("Percentile curves (P10 / P50 / P90)")
+
+fig_overlay = px.line(
+    df_long,
+    x="t",
+    y="price",
+    line_group="path_id",
+    title="Percentile curves over simulated paths",
+)
+
+# make paths grey + transparent
+fig_overlay.update_traces(line=dict(width=1, color="rgba(160,160,160,0.25)"))
+fig_overlay.update_layout(showlegend=True, xaxis_title="Years", yaxis_title="BTC Price (USD)")
+
+# add quantiles on top
+fig_overlay.add_scatter(
+    x=df_q["t"], y=df_q["P10"], mode="lines", name="P10 (Bear)", line=dict(width=3, color="#FF6B6B")
+)
+fig_overlay.add_scatter(
+    x=df_q["t"], y=df_q["P50"], mode="lines", name="P50 (Base)", line=dict(width=4, color="#4D96FF")
+)
+fig_overlay.add_scatter(
+    x=df_q["t"], y=df_q["P90"], mode="lines", name="P90 (Bull)", line=dict(width=3, color="#6BCB77")
+)
+
+fig_overlay.update_yaxes(type="log" if log_y else "linear")
+
+st.plotly_chart(fig_overlay, width="stretch")
+
+st.caption(
+    "P10 can be interpreted as a pessimistic scenario, P50 as a base case, and P90 as an optimistic scenario. "
+    "Enable Log scale in the sidebar if paths explode."
+)
+
+# ---- Graph 3 ----
 
 df_final = pd.DataFrame({"final_price": final_prices})
-
-
 cap = float(np.quantile(final_prices, 0.95))  # P95
 df_hist = df_final[df_final["final_price"] <= cap]
 
-BIN_SIZE = 25_000
+BIN_SIZE = 25_000  # adjust bin size for readability based on the range of final prices
 
 fig_hist = px.histogram(
     df_hist,
     x="final_price",
-    title=f"Final price distribution (capped at P95 = {cap:,.0f})",
+    title="Final price distribution",
 )
 fig_hist.update_traces(xbins=dict(start=0, end=cap, size=BIN_SIZE))
 fig_hist.update_xaxes(title="Final price (USD)", range=[0, cap])
 fig_hist.update_yaxes(title="Count")
-st.plotly_chart(fig_hist, width="stretch")
 
+st.plotly_chart(fig_hist, width="stretch")
 st.caption("Note: chart is capped at the 95th percentile for readability.")
 
 st.divider()
 
 # ---- Data ----
-st.subheader("Quantiles table (preview)")
+st.subheader("Bitcoin price scenario summary")
 st.dataframe(df_q, width="stretch")
+st.caption(
+    "Summary of P10 (bear), P50 (base) and P90 (bull) market scenarios across the simulation horizon. "
+    "Can be downloaded as a CSV file using the button in the top-right corner of the table."
+)
