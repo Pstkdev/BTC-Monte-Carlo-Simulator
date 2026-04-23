@@ -6,7 +6,6 @@ import plotly.express as px
 from src.calibration import fetch_adj_close, estimate_mu_sigma
 from src.btc_simulation import BTCMonteCarlo
 
-
 st.set_page_config(page_title="BTC Monte Carlo Simulator", layout="wide")
 st.title("Bitcoin Monte Carlo Simulator")
 st.caption("Geometric Brownian Motion (GBM) Monte Carlo simulation for BTC-USD")
@@ -215,7 +214,7 @@ fig_paths = px.line(
     line_group="path_id",
     color="path_id",
 )
-fig_paths.update_traces(line=dict(width=1), opacity=0.70)
+fig_paths.update_traces(line=dict(width=1))
 fig_paths.update_layout(showlegend=True, xaxis_title="Years", yaxis_title="BTC Price (USD)")
 fig_paths.update_yaxes(type="log" if log_y else "linear")
 
