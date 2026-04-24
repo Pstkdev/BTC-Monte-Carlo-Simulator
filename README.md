@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12-orange?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-App-red?logo=streamlit&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-Scientific%20Computing-blue?logo=numpy&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-Calculations-blue?logo=numpy&logoColor=white)
 ![Pandas](https://img.shields.io/badge/Pandas-Data%20Analysis-green?logo=pandas&logoColor=white)
 ![Plotly](https://img.shields.io/badge/Plotly-Visualization-purple?logo=plotly&logoColor=white)
 ![yfinance](https://img.shields.io/badge/yfinance-Historical%20Data-lightgrey)
