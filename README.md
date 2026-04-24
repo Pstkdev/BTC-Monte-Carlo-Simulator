@@ -9,6 +9,10 @@
 
 A **Monte Carlo** simulator for **Bitcoin (BTC-USD)** using a **Geometric Brownian Motion (GBM)** price model.
 
+<p align="center">
+  <img src="assets/demo.gif" width="700" alt="demo gif">
+</p>
+
 This project includes a **Streamlit** interface: users can calibrate parameters from historical data (average return μ and volatility σ), run thousands of simulations, explore scenario percentiles (P10/P50/P90), visualise distributions and sample trajectories.
 
 ---
