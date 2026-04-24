@@ -6,7 +6,11 @@ import plotly.express as px
 from src.calibration import fetch_adj_close, estimate_mu_sigma
 from src.btc_simulation import BTCMonteCarlo
 
-st.set_page_config(page_title="BTC Monte Carlo Simulator", layout="wide")
+st.set_page_config(
+    page_title="BTC Monte Carlo Simulator",
+    page_icon="assets/btc.png",
+    layout="wide",
+)
 st.title("Bitcoin Monte Carlo Simulator")
 st.caption("Geometric Brownian Motion (GBM) Monte Carlo simulation for BTC-USD")
 
@@ -30,13 +34,13 @@ def max_available_years(first_date: pd.Timestamp, last_date: pd.Timestamp) -> in
 
 
 @st.cache_data(show_spinner=False)
-def build_viz_long_df(paths: np.ndarray, idx: np.ndarray, years: int) -> pd.DataFrame:
+def build_viz_long_df(paths: np.ndarray, idx: tuple[int, ...], years: int) -> pd.DataFrame:
     """
     Build a long DataFrame for Plotly from a subset of simulated paths.
     Cached because this is expensive.
     """
     t_years = np.linspace(0, years, paths.shape[1])
-    df_paths = pd.DataFrame(paths[idx], columns=t_years)
+    df_paths = pd.DataFrame(paths[list(idx)], columns=t_years)
     df_paths["path_id"] = [f"path_{i}" for i in idx]
     df_long = df_paths.melt(id_vars="path_id", var_name="t", value_name="price")
     df_long["t"] = df_long["t"].astype(float)
@@ -44,6 +48,7 @@ def build_viz_long_df(paths: np.ndarray, idx: np.ndarray, years: int) -> pd.Data
 
 
 # ------------ Sidebar ------------ #
+st.sidebar.image("assets/bitcoin.png", width=250)
 st.sidebar.header("Simulation parameters")
 
 first_date, last_date = fetch_btc_history_bounds()
@@ -85,6 +90,15 @@ num_simulations = st.sidebar.slider(
     value=5000,
     step=200,
     help="Number of Monte Carlo paths to simulate. More paths = more accurate estimates.",
+)
+
+n_show = st.sidebar.slider(
+    "Number of simulated paths to show",
+    min_value=20,
+    max_value=300,
+    value=100,
+    step=10,
+    help="Number of simulated paths to show in the spaghetti plot.",
 )
 
 threshold_price = st.sidebar.number_input(
@@ -196,11 +210,13 @@ st.divider()
 
 # Graph 1: Spaghetti plot settings
 st.subheader("Simulated price paths")
-n_show = st.slider("Number of paths to show", min_value=20, max_value=300, value=100, step=10)
 
 # random subset of paths for visualization
 rng_vis = np.random.default_rng(seed)
 idx = rng_vis.choice(paths.shape[0], size=min(n_show, paths.shape[0]), replace=False)
+idx_tuple = tuple(int(i) for i in idx)
+
+df_long = build_viz_long_df(paths, idx_tuple, int(years))
 
 # Build long dataframe
 df_long = build_viz_long_df(paths, idx, int(years))
@@ -220,7 +236,7 @@ fig_paths.update_yaxes(type="log" if log_y else "linear")
 
 st.plotly_chart(fig_paths, width="stretch")
 st.caption(
-    "Note: number of paths shown is limited for readability. Use the slider to adjust. "
+    "Note: number of paths shown is limited for readability. Use the slider in the sidebar to adjust. "
     "You can hide a path by clicking its id in the legend."
     " If paths explode, enable Log scale in the sidebar."
 )
@@ -242,13 +258,13 @@ fig_overlay.update_layout(showlegend=True, xaxis_title="Years", yaxis_title="BTC
 
 # add quantiles on top
 fig_overlay.add_scatter(
-    x=df_q["t"], y=df_q["P10"], mode="lines", name="P10 (Bear)", line=dict(width=3, color="#FF6B6B")
+    x=df_q["t"], y=df_q["P10"], mode="lines", name="P10 (Bear)", line=dict(width=3, color="#FF3C3C")
 )
 fig_overlay.add_scatter(
-    x=df_q["t"], y=df_q["P50"], mode="lines", name="P50 (Base)", line=dict(width=4, color="#4D96FF")
+    x=df_q["t"], y=df_q["P50"], mode="lines", name="P50 (Base)", line=dict(width=4, color="#FF9845")
 )
 fig_overlay.add_scatter(
-    x=df_q["t"], y=df_q["P90"], mode="lines", name="P90 (Bull)", line=dict(width=3, color="#6BCB77")
+    x=df_q["t"], y=df_q["P90"], mode="lines", name="P90 (Bull)", line=dict(width=3, color="#3DFF57")
 )
 
 fig_overlay.update_yaxes(type="log" if log_y else "linear")
@@ -257,7 +273,7 @@ st.plotly_chart(fig_overlay, width="stretch")
 
 st.caption(
     "P10 can be interpreted as a pessimistic scenario, P50 as a base case, and P90 as an optimistic scenario. "
-    "Enable Log scale in the sidebar if paths explode."
+    "If paths explode, enable Log scale in the sidebar."
 )
 
 # ---- Graph 3 ----
@@ -272,6 +288,11 @@ fig_hist = px.histogram(
     df_hist,
     x="final_price",
     title="Final price distribution",
+)
+fig_hist.update_traces(
+    marker_color="#F7931A",
+    marker_line_color="rgba(0,0,0,0.25)",
+    marker_line_width=1,
 )
 fig_hist.update_traces(xbins=dict(start=0, end=cap, size=BIN_SIZE))
 fig_hist.update_xaxes(title="Final price (USD)", range=[0, cap])
