@@ -33,10 +33,3 @@ def estimate_mu_sigma(prices: pd.Series, steps_per_year: int) -> tuple[float, fl
     mu = log_returns.mean() * steps_per_year
     sigma = log_returns.std() * math.sqrt(steps_per_year)
     return mu, sigma
-
-
-if __name__ == "__main__":
-    prices = fetch_adj_close("BTC-USD", start="2022-01-01")
-    mu, sigma = estimate_mu_sigma(prices, steps_per_year=365)
-    print("mu_annual:", mu)
-    print("sigma_annual:", sigma)
