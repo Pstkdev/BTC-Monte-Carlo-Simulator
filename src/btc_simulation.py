@@ -66,19 +66,3 @@ class BTCMonteCarlo:
         Compute quantile curves across simulations for each time step.
         """
         return np.quantile(paths, qs, axis=0)
-
-
-if __name__ == "__main__":
-    # Example usage
-    start_price = 70000
-    mu = 0.1
-    sigma = 0.5
-    years = 1
-    num_simulations = 1000
-    seed = 42
-
-    simulator = BTCMonteCarlo(start_price, mu, sigma, years, num_simulations, seed)
-    paths = simulator.simulate_paths()
-    q = simulator.compute_quantiles(paths)
-    print(q.shape)
-    print(q[:, -1])
